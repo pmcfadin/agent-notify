@@ -1693,11 +1693,14 @@ PYWEBHOOK
     webhook_body="{\"content\":\"$title\"}"
   fi
 
-  # ntfy needs special URL handling (topic in URL, not body)
-  if [[ "${webhook_preset:-}" == "ntfy" || "$webhook_url" == *"ntfy"* ]]; then
-    # ntfy: POST to topic URL with JSON body
+  # ntfy parses JSON publishes only at the server root; the topic rides in the body
+  if [[ ( "${webhook_preset:-}" == "ntfy" || "$webhook_url" == *"ntfy"* ) && "$webhook_body" == *'"topic"'* ]]; then
+    ntfy_root="$webhook_url"
+    if [[ "$webhook_url" =~ ^(https?://[^/]+) ]]; then
+      ntfy_root="${BASH_REMATCH[1]}"
+    fi
     curl -s -X POST -H "Content-Type: application/json" \
-      -d "$webhook_body" "$webhook_url" >/dev/null 2>&1 &
+      -d "$webhook_body" "$ntfy_root" >/dev/null 2>&1 &
   else
     curl -s -X POST -H "Content-Type: application/json" \
       -d "$webhook_body" "$webhook_url" >/dev/null 2>&1 &
