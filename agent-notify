@@ -79,6 +79,7 @@ Environment variables:
   CODEX_NOTIFY_APPROVAL_SOUND  Approval sound (default: Sosumi / dialog-warning.oga)
   CODEX_SILENT=1               Disable sound
   CODEX_NOTIFY_QUIET=1         Suppress terminal echo line
+  CODEX_NOTIFY_CONCISE=1       Short notifications: project name + first sentence
   CODEX_ACTIVATE_BUNDLE        macOS: app bundle to activate on click (auto-detected)
   CODEX_SENDER_BUNDLE          macOS: sender bundle for -activate mode icon
   CODEX_SUPPRESS_FRONTMOST=1   Suppress if editor is frontmost (default: 0)
@@ -622,7 +623,7 @@ if [[ -n "$stdin_json" && "$stdin_json" == "{"* ]]; then
   while IFS= read -r line; do
     parsed+=("$line")
   done < <(python3 - "$stdin_json" <<'PY'
-import json, sys
+import json, os, re, sys
 
 def clean(val):
     s = "" if val is None else str(val)
@@ -777,7 +778,16 @@ elif hook_event in ("Stop", "AfterAgent"):
         elif "api error" in lower_last or "overloaded" in lower_last:
             category = "error"
 
-message = clip(last, 140)
+# Concise mode: project name as title, first sentence as message
+if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
+    plain = re.sub(r"[*_`#]", "", last).strip()
+    last = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    if category in ("stop", "completion"):
+        proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
+        title = f"{agent}: {proj}" if proj else f"{agent}: done"
+    message = clip(last, 110)
+else:
+    message = clip(last, 140)
 
 # Trim cwd for subtitle
 cwd_display = clip(cwd, 140)
@@ -868,6 +878,16 @@ thread_id = clean(payload.get("thread-id", ""))
 group = f"codex-{thread_id}" if thread_id else ""
 
 category = "completion" if event_type == "agent-turn-complete" else "approval"
+
+# Concise mode: project name as title, first sentence of reply as message
+if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
+    import re
+    plain = re.sub(r"[*_`#]", "", last).strip()
+    brief = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
+    if category == "completion":
+        title = f"Codex: {proj}" if proj else "Codex: done"
+    message = clip(brief, 110)
 
 print(title)
 print(message)

@@ -240,6 +240,7 @@ agent-notify --update                # update to latest release
 | `CODEX_NOTIFY_APPROVAL_SOUND` | `Sosumi` / `dialog-warning` | Approval sound |
 | `CODEX_SILENT=1` | — | Disable all sounds |
 | `CODEX_NOTIFY_QUIET=1` | — | Suppress terminal echo |
+| `CODEX_NOTIFY_CONCISE=1` | — | Short notifications: project name as title, first sentence as message |
 | `CODEX_ACTIVATE_BUNDLE` | auto-detected | macOS: app to activate on click |
 | `CODEX_SENDER_BUNDLE` | `com.microsoft.VSCode` | macOS: sender icon for `-activate` mode |
 | `CODEX_SUPPRESS_FRONTMOST=0` | `1` | Disable suppression when target app is frontmost |
