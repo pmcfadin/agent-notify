@@ -80,6 +80,7 @@ Environment variables:
   CODEX_SILENT=1               Disable sound
   CODEX_NOTIFY_QUIET=1         Suppress terminal echo line
   CODEX_NOTIFY_CONCISE=1       Short notifications: project name + first sentence
+  CODEX_NOTIFY_AGENT_NAME      Custom agent name in titles (for concurrent agents)
   CODEX_ACTIVATE_BUNDLE        macOS: app bundle to activate on click (auto-detected)
   CODEX_SENDER_BUNDLE          macOS: sender bundle for -activate mode icon
   CODEX_SUPPRESS_FRONTMOST=1   Suppress if editor is frontmost (default: 0)
@@ -934,6 +935,17 @@ _source_project_env "${project_cwd:-$PWD}"
 # ---------------------------------------------------------------------------
 # Load configuration (after per-project env so overrides take effect)
 # ---------------------------------------------------------------------------
+# Custom agent name: replaces the detected name (Claude/Gemini/Codex/Manual)
+# in the title so concurrent agents are distinguishable
+if [[ -n "${CODEX_NOTIFY_AGENT_NAME:-}" ]]; then
+  custom_agent_name="$CODEX_NOTIFY_AGENT_NAME"
+  if [[ "$title" == "${agent_name:-Manual}: "* ]]; then
+    title="${custom_agent_name}: ${title#*: }"
+  else
+    title="${custom_agent_name}: ${title}"
+  fi
+  agent_name="$custom_agent_name"
+fi
 quiet="${CODEX_NOTIFY_QUIET:-0}"
 sender_bundle="${CODEX_SENDER_BUNDLE:-com.microsoft.VSCode}"
 suppress_frontmost="${CODEX_SUPPRESS_FRONTMOST:-0}"
