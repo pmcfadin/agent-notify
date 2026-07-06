@@ -93,7 +93,7 @@ Environment variables:
   CODEX_NOTIFY_WEBHOOK         Webhook URL (Discord, Slack, Telegram, ntfy, generic)
   CODEX_NOTIFY_WEBHOOK_PRESET  Webhook format: slack, discord, telegram, ntfy, generic
   CODEX_NOTIFY_WEBHOOK_CATEGORIES  Categories to forward to webhook, comma-separated
-                               (start,stop,completion,approval,question,error,auth; default: *)
+                               (start,stop,completion,idle,approval,question,error,auth; default: *)
   CODEX_NOTIFY_TELEGRAM_CHAT_ID  Telegram chat ID (required for telegram preset)
   CODEX_NOTIFY_NTFY_TOPIC      ntfy topic (can also be set via URL)
   CODEX_NOTIFY_EXEC_CMD        Override the click-execute command
@@ -684,6 +684,7 @@ notif = data.get("notification", {})
 has_claude = (
     "last_assistant_message" in data
     or "tool_name" in data
+    or "notification_type" in data
     or hook_event in ("SessionStart", "SessionEnd", "SubagentStart",
                       "SubagentStop", "TeammateIdle", "TaskCompleted")
     or (isinstance(notif, dict) and notif.get("type") in (
@@ -771,31 +772,34 @@ elif hook_event == "TaskCompleted":
         last += f" (by {teammate})"
 
 elif hook_event == "Notification":
-    # Default to approval for notification events
-    category = "approval"
+    # Claude Code sends notification fields at the top level
+    # (message, notification_type); older/other agents nest them in a dict
+    notif_type = clean(data.get("notification_type", ""))
+    notif_title = clean(data.get("title", ""))
+    notif_msg = clean(data.get("message", ""))
     if isinstance(notif, dict):
-        notif_type = clean(notif.get("type", ""))
-        notif_title = clean(notif.get("title", ""))
-        notif_msg = clean(notif.get("message", ""))
+        notif_type = notif_type or clean(notif.get("type", ""))
+        notif_title = notif_title or clean(notif.get("title", ""))
+        notif_msg = notif_msg or clean(notif.get("message", ""))
 
-        # Fine-grained categorization
-        if notif_type == "permission_prompt":
-            category = "approval"
-        elif notif_type == "idle_prompt":
-            category = "question"
-        elif notif_type == "elicitation_dialog":
-            category = "question"
-        elif notif_type == "auth_success":
-            category = "auth"
+    # Fine-grained categorization; default to approval
+    type_map = {
+        "permission_prompt": ("approval", "Permission needed"),
+        "idle_prompt": ("idle", "Waiting for input"),
+        "elicitation_dialog": ("question", "Input needed"),
+        "agent_needs_input": ("question", "Input needed"),
+        "elicitation_complete": ("completion", "Input received"),
+        "elicitation_response": ("completion", "Input received"),
+        "auth_success": ("auth", "Signed in"),
+        "agent_completed": ("completion", "Agent finished"),
+    }
+    category, label = type_map.get(notif_type, ("approval", "Notification"))
+    title = f"{agent}: {clip(notif_title or label, 90)}"
+    last = notif_msg or notif_title or label
 
-        if notif_title:
-            title = f"{agent}: {clip(notif_title, 90)}"
-        if notif_msg:
-            last = notif_msg
-
-        # Gemini ToolPermission
-        if notif_type == "ToolPermission" or "ToolPermission" in notif_title:
-            category = "approval"
+    # Gemini ToolPermission
+    if notif_type == "ToolPermission" or "ToolPermission" in notif_title:
+        category = "approval"
 
 elif hook_event in ("Stop", "AfterAgent"):
     category = "stop"
@@ -1771,8 +1775,8 @@ elif preset == "ntfy":
     # ntfy uses a different payload structure
     # Informational events (turn/session ends) deliver silently (priority 2);
     # events needing action buzz (4), errors are max priority (5)
-    priority_map = {"start": 2, "stop": 2, "completion": 2, "approval": 4, "question": 4, "error": 5, "auth": 3}
-    tag_map = {"start": "arrow_forward", "stop": "white_check_mark", "completion": "white_check_mark", "approval": "warning", "question": "question", "error": "rotating_light", "auth": "lock"}
+    priority_map = {"start": 2, "stop": 2, "completion": 2, "idle": 2, "approval": 4, "question": 4, "error": 5, "auth": 3}
+    tag_map = {"start": "arrow_forward", "stop": "white_check_mark", "completion": "white_check_mark", "idle": "hourglass", "approval": "warning", "question": "question", "error": "rotating_light", "auth": "lock"}
     payload = {
         "topic": ntfy_topic or url.rstrip("/").split("/")[-1],
         "title": title,

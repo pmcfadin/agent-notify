@@ -253,7 +253,7 @@ agent-notify --update                # update to latest release
 | `CODEX_NOTIFY_SAY_RATE` | system | TTS speech rate (wpm, macOS only) |
 | `CODEX_NOTIFY_WEBHOOK` | — | Webhook URL (auto-detects service) |
 | `CODEX_NOTIFY_WEBHOOK_PRESET` | auto | Webhook format: `slack`, `discord`, `telegram`, `ntfy`, `generic` |
-| `CODEX_NOTIFY_WEBHOOK_CATEGORIES` | `*` | Categories forwarded to the webhook, comma-separated (`start`, `stop`, `completion`, `approval`, `question`, `error`, `auth`) |
+| `CODEX_NOTIFY_WEBHOOK_CATEGORIES` | `*` | Categories forwarded to the webhook, comma-separated (`start`, `stop`, `completion`, `idle`, `approval`, `question`, `error`, `auth`) |
 | `CODEX_NOTIFY_TELEGRAM_CHAT_ID` | — | Telegram chat ID (required for telegram preset) |
 | `CODEX_NOTIFY_NTFY_TOPIC` | — | ntfy topic (can also be in URL) |
 | `CODEX_NOTIFY_EXEC_CMD` | auto-detected | Override the click-execute command |
