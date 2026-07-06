@@ -810,7 +810,14 @@ elif hook_event == "Notification":
         "agent_completed": ("completion", "Agent finished"),
     }
     category, label = type_map.get(notif_type, ("approval", "Notification"))
-    title = f"{agent}: {clip(notif_title or label, 90)}"
+    # Title carries the project so multi-session fleets are tellable apart
+    proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
+    if notif_title:
+        title = f"{agent}: {clip(notif_title, 90)}"
+    elif proj:
+        title = f"{agent}: {proj} — {label.lower()}"
+    else:
+        title = f"{agent}: {label}"
     last = notif_msg or notif_title or label
 
     # Gemini ToolPermission
@@ -1127,10 +1134,12 @@ _default_approval_sound() {
 }
 
 # Map fine-grained categories to sound categories
+# "idle" is silent: it always trails a completion that already made a sound
 _sound_for_category() {
   case "$1" in
     completion|auth|stop|start) echo "completion" ;;
     approval|question|error)    echo "approval" ;;
+    idle)                       echo "none" ;;
     *)                          echo "completion" ;;
   esac
 }
@@ -1139,6 +1148,9 @@ sound_type="$(_sound_for_category "$sound_category")"
 
 sound="${CODEX_NOTIFY_SOUND:-$(_default_completion_sound)}"
 sound="$(resolve_sound "$sound")"
+if [[ "$sound_type" == "none" ]]; then
+  sound=""
+fi
 
 if [[ "$sound_type" == "approval" && "${CODEX_SILENT:-}" != "1" ]]; then
   approval_sound="${CODEX_NOTIFY_APPROVAL_SOUND:-$(_default_approval_sound)}"
