@@ -211,34 +211,39 @@ if os.path.exists(config_path):
             settings = {}
 
 hooks = settings.setdefault("hooks", {})
-hook_list = hooks.setdefault("Stop", [])
 
-# Check if already configured
-already = any(
-    isinstance(h, dict) and script_path in h.get("command", "")
-    for h in hook_list
-)
-if already:
-    print(f"Claude Code: hooks already configured in {config_path}")
-    sys.exit(0)
+
+def already_configured(hook_list):
+    """True if script_path is present, whether wrapped ({"hooks": [...]})
+    or in the legacy bare form ({"type": ..., "command": ...})."""
+    for h in hook_list:
+        if not isinstance(h, dict):
+            continue
+        if script_path in h.get("command", ""):
+            return True
+        for inner in h.get("hooks", []):
+            if isinstance(inner, dict) and script_path in inner.get("command", ""):
+                return True
+    return False
+
+
+def entry():
+    # Claude Code requires the {"hooks": [...]} wrapper for these events;
+    # a bare {"type", "command"} dict is invalid and breaks settings parsing.
+    return {"hooks": [{"type": "command", "command": script_path}]}
+
 
 # Add Stop hook (task completion)
-hook_list.append({
-    "type": "command",
-    "command": script_path
-})
+stop_list = hooks.setdefault("Stop", [])
+if already_configured(stop_list):
+    print(f"Claude Code: hooks already configured in {config_path}")
+    sys.exit(0)
+stop_list.append(entry())
 
 # Add Notification hook (permission prompts, idle, etc.)
 notif_list = hooks.setdefault("Notification", [])
-notif_already = any(
-    isinstance(h, dict) and script_path in h.get("command", "")
-    for h in notif_list
-)
-if not notif_already:
-    notif_list.append({
-        "type": "command",
-        "command": script_path
-    })
+if not already_configured(notif_list):
+    notif_list.append(entry())
 
 with open(config_path, "w") as f:
     json.dump(settings, f, indent=2)
