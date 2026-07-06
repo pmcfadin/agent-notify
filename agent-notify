@@ -19,6 +19,15 @@ detect_platform
 # ---------------------------------------------------------------------------
 # CLI flags  (parsed before anything else)
 # ---------------------------------------------------------------------------
+# Optional leading --category flag for manual notifications; sets the ntfy
+# priority/tag (completion|approval|question|error|auth). Consumed here so the
+# remaining args are the usual "Title" "Message" positional pair.
+manual_category=""
+if [[ "${1:-}" == "--category" ]]; then
+  manual_category="${2:-completion}"
+  shift 2 2>/dev/null || shift $#
+fi
+
 case "${1:-}" in
   --version|-v|-V)
     echo "agent-notify $VERSION"
@@ -35,6 +44,8 @@ Usage:
   agent-notify <json-payload>        Codex notify-hook mode (argv)
   echo '<json>' | agent-notify       Claude Code / Gemini CLI hook mode (stdin)
   agent-notify "Title" "Message"     Manual notification
+  agent-notify --category C "T" "M"  Manual notification with category/priority
+                                     (completion|approval|question|error|auth)
   agent-notify --test                Codex completion notification
   agent-notify --test-approval       Codex approval notification
   agent-notify --test-claude         Claude Code completion notification
@@ -986,6 +997,9 @@ else
   title="${1:-Codex}"
   msg="${2:-Task finished}"
   agent_name="Manual"
+  if [[ -n "$manual_category" ]]; then
+    sound_category="$manual_category"
+  fi
   if [[ -n "${3:-}" ]]; then
     # Legacy: third arg was custom sound
     export CODEX_NOTIFY_SOUND="${3}"
