@@ -670,16 +670,30 @@ def md_to_plain(s):
 
 _ABBREVS = ("e.g.", "i.e.", "etc.", "vs.", "cf.", "no.", "approx.")
 
-def first_sentence(s):
-    # First sentence, skipping breaks after abbreviations and version numbers
+def sentences(s):
+    # Split into sentences, skipping breaks after abbreviations and versions
     s = " ".join(str(s).split())
+    out, start = [], 0
     for m in re.finditer(r"[.!?](?=\s)", s):
         end = m.end()
-        tok = s[:end].rsplit(" ", 1)[-1].lower()
+        tok = s[start:end].rsplit(" ", 1)[-1].lower()
         if tok in _ABBREVS or re.search(r"\d\.$", tok) or (len(tok) == 2 and tok[0].isalpha()):
             continue
-        return s[:end]
-    return s
+        out.append(s[start:end])
+        start = end + 1
+    if start < len(s):
+        out.append(s[start:])
+    return out
+
+def lead_sentences(s, limit):
+    # Whole sentences from the start, as many as fit within limit
+    out = ""
+    for part in sentences(s):
+        cand = (out + " " + part).strip()
+        if out and len(cand) > limit:
+            break
+        out = cand
+    return out
 
 try:
     data = json.loads(sys.argv[1])
@@ -844,7 +858,7 @@ if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
     # For turn-end events, work from the raw assistant message so markdown
     # structure (headings, fences) can be stripped before flattening
     src = raw_last if (category in ("stop", "completion") and raw_last.strip()) else last
-    brief = first_sentence(md_to_plain(src))
+    brief = lead_sentences(md_to_plain(src), 300)
     if brief:
         last = brief
     if category in ("stop", "completion"):
@@ -925,15 +939,28 @@ def md_to_plain(s):
 
 _ABBREVS = ("e.g.", "i.e.", "etc.", "vs.", "cf.", "no.", "approx.")
 
-def first_sentence(s):
+def sentences(s):
     s = " ".join(str(s).split())
+    out, start = [], 0
     for m in re.finditer(r"[.!?](?=\s)", s):
         end = m.end()
-        tok = s[:end].rsplit(" ", 1)[-1].lower()
+        tok = s[start:end].rsplit(" ", 1)[-1].lower()
         if tok in _ABBREVS or re.search(r"\d\.$", tok) or (len(tok) == 2 and tok[0].isalpha()):
             continue
-        return s[:end]
-    return s
+        out.append(s[start:end])
+        start = end + 1
+    if start < len(s):
+        out.append(s[start:])
+    return out
+
+def lead_sentences(s, limit):
+    out = ""
+    for part in sentences(s):
+        cand = (out + " " + part).strip()
+        if out and len(cand) > limit:
+            break
+        out = cand
+    return out
 
 try:
     payload = json.loads(sys.argv[1])
@@ -974,7 +1001,7 @@ category = "completion" if event_type == "agent-turn-complete" else "approval"
 # Concise mode: project name as title, first sentence of reply as message
 if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
     raw_last = str(payload.get("last-assistant-message") or "")
-    brief = first_sentence(md_to_plain(raw_last or last))
+    brief = lead_sentences(md_to_plain(raw_last or last), 300)
     proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
     if category == "completion":
         title = f"Codex: {proj}" if proj else "Codex: done"
