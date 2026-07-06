@@ -92,6 +92,8 @@ Environment variables:
   CODEX_NOTIFY_SAY_RATE        Speech rate (words per minute, macOS only)
   CODEX_NOTIFY_WEBHOOK         Webhook URL (Discord, Slack, Telegram, ntfy, generic)
   CODEX_NOTIFY_WEBHOOK_PRESET  Webhook format: slack, discord, telegram, ntfy, generic
+  CODEX_NOTIFY_WEBHOOK_CATEGORIES  Categories to forward to webhook, comma-separated
+                               (start,stop,completion,approval,question,error,auth; default: *)
   CODEX_NOTIFY_TELEGRAM_CHAT_ID  Telegram chat ID (required for telegram preset)
   CODEX_NOTIFY_NTFY_TOPIC      ntfy topic (can also be set via URL)
   CODEX_NOTIFY_EXEC_CMD        Override the click-execute command
@@ -632,12 +634,43 @@ def clean(val):
 
 def clip(s, limit):
     s = clean(s)
-    return s if len(s) <= limit else s[:max(0, limit - 3)] + "..."
+    if len(s) <= limit:
+        return s
+    cut = s[: max(0, limit - 1)]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:.") + "…"
+
+def md_to_plain(s):
+    # Reduce markdown to plain text (operates on raw, multi-line input)
+    s = str(s)
+    s = re.sub(r"```.*?(```|$)", " ", s, flags=re.S)     # fenced code blocks
+    s = re.sub(r"(?m)^\s{0,3}#{1,6}\s.*$", "", s)        # heading lines
+    s = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", s)     # links/images -> text
+    s = re.sub(r"(?m)^\s*(?:[-*+]|\d+[.)])\s+", "", s)   # list markers
+    s = re.sub(r"(?m)^\s*>\s?", "", s)                   # blockquotes
+    s = s.replace("`", "").replace("*", "").replace("__", "")
+    return " ".join(s.split())
+
+_ABBREVS = ("e.g.", "i.e.", "etc.", "vs.", "cf.", "no.", "approx.")
+
+def first_sentence(s):
+    # First sentence, skipping breaks after abbreviations and version numbers
+    s = " ".join(str(s).split())
+    for m in re.finditer(r"[.!?](?=\s)", s):
+        end = m.end()
+        tok = s[:end].rsplit(" ", 1)[-1].lower()
+        if tok in _ABBREVS or re.search(r"\d\.$", tok) or (len(tok) == 2 and tok[0].isalpha()):
+            continue
+        return s[:end]
+    return s
 
 try:
     data = json.loads(sys.argv[1])
 except Exception:
     sys.exit(1)
+
+raw_last = str(data.get("last_assistant_message") or data.get("prompt_response") or "")
 
 hook_event = clean(data.get("hook_event_name", ""))
 if not hook_event:
@@ -781,14 +814,18 @@ elif hook_event in ("Stop", "AfterAgent"):
 
 # Concise mode: project name as title, first sentence as message
 if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
-    plain = re.sub(r"[*_`#]", "", last).strip()
-    last = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    # For turn-end events, work from the raw assistant message so markdown
+    # structure (headings, fences) can be stripped before flattening
+    src = raw_last if (category in ("stop", "completion") and raw_last.strip()) else last
+    brief = first_sentence(md_to_plain(src))
+    if brief:
+        last = brief
     if category in ("stop", "completion"):
         proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
         title = f"{agent}: {proj}" if proj else f"{agent}: done"
-    message = clip(last, 110)
+    message = clip(last, 300)
 else:
-    message = clip(last, 140)
+    message = clip(last, 300)
 
 # Trim cwd for subtitle
 cwd_display = clip(cwd, 140)
@@ -834,7 +871,7 @@ elif [[ -n "$payload" && "$payload" == "{"* ]]; then
     parsed+=("$line")
   done < <(python3 - "$payload" <<'PY'
 import json, sys
-import os
+import os, re
 
 def clean(val):
     s = "" if val is None else str(val)
@@ -842,7 +879,34 @@ def clean(val):
 
 def clip(s, limit):
     s = clean(s)
-    return s if len(s) <= limit else s[:max(0, limit - 3)] + "..."
+    if len(s) <= limit:
+        return s
+    cut = s[: max(0, limit - 1)]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:.") + "…"
+
+def md_to_plain(s):
+    s = str(s)
+    s = re.sub(r"```.*?(```|$)", " ", s, flags=re.S)
+    s = re.sub(r"(?m)^\s{0,3}#{1,6}\s.*$", "", s)
+    s = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", s)
+    s = re.sub(r"(?m)^\s*(?:[-*+]|\d+[.)])\s+", "", s)
+    s = re.sub(r"(?m)^\s*>\s?", "", s)
+    s = s.replace("`", "").replace("*", "").replace("__", "")
+    return " ".join(s.split())
+
+_ABBREVS = ("e.g.", "i.e.", "etc.", "vs.", "cf.", "no.", "approx.")
+
+def first_sentence(s):
+    s = " ".join(str(s).split())
+    for m in re.finditer(r"[.!?](?=\s)", s):
+        end = m.end()
+        tok = s[:end].rsplit(" ", 1)[-1].lower()
+        if tok in _ABBREVS or re.search(r"\d\.$", tok) or (len(tok) == 2 and tok[0].isalpha()):
+            continue
+        return s[:end]
+    return s
 
 try:
     payload = json.loads(sys.argv[1])
@@ -872,7 +936,7 @@ if isinstance(inputs, list):
 else:
     inputs_text = str(inputs)
 
-message = clip(inputs_text, 140) or "Turn complete"
+message = clip(inputs_text, 300) or "Turn complete"
 cwd = clean(payload.get("cwd", ""))
 cwd_display = clip(cwd, 140)
 thread_id = clean(payload.get("thread-id", ""))
@@ -882,13 +946,12 @@ category = "completion" if event_type == "agent-turn-complete" else "approval"
 
 # Concise mode: project name as title, first sentence of reply as message
 if os.environ.get("CODEX_NOTIFY_CONCISE", "") == "1":
-    import re
-    plain = re.sub(r"[*_`#]", "", last).strip()
-    brief = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    raw_last = str(payload.get("last-assistant-message") or "")
+    brief = first_sentence(md_to_plain(raw_last or last))
     proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
     if category == "completion":
         title = f"Codex: {proj}" if proj else "Codex: done"
-    message = clip(brief, 110)
+    message = clip(brief or last, 300)
 
 print(title)
 print(message)
@@ -1612,6 +1675,14 @@ fi
 # ---------------------------------------------------------------------------
 # Webhook (with preset formatters)
 # ---------------------------------------------------------------------------
+# Category filter (opt-in): forward only selected categories to the webhook
+webhook_categories="${CODEX_NOTIFY_WEBHOOK_CATEGORIES:-*}"
+if [[ -n "$webhook_url" && "$webhook_categories" != "*" ]]; then
+  if [[ ",${webhook_categories// /}," != *",${sound_category:-completion},"* ]]; then
+    webhook_url=""
+  fi
+fi
+
 if [[ -n "$webhook_url" ]]; then
   if command -v python3 >/dev/null 2>&1; then
     webhook_body="$(python3 - "$title" "$msg" "${agent_name:-Manual}" "${sound_category:-completion}" "$webhook_url" "${webhook_preset:-}" "${CODEX_NOTIFY_TELEGRAM_CHAT_ID:-}" "${CODEX_NOTIFY_NTFY_TOPIC:-}" "${session_id:-}" <<'PYWEBHOOK'
@@ -1698,8 +1769,10 @@ elif preset == "telegram":
     }
 elif preset == "ntfy":
     # ntfy uses a different payload structure
-    priority_map = {"completion": 3, "approval": 4, "question": 4, "error": 5, "auth": 4}
-    tag_map = {"completion": "white_check_mark", "approval": "warning", "question": "question", "error": "rotating_light", "auth": "lock"}
+    # Informational events (turn/session ends) deliver silently (priority 2);
+    # events needing action buzz (4), errors are max priority (5)
+    priority_map = {"start": 2, "stop": 2, "completion": 2, "approval": 4, "question": 4, "error": 5, "auth": 3}
+    tag_map = {"start": "arrow_forward", "stop": "white_check_mark", "completion": "white_check_mark", "approval": "warning", "question": "question", "error": "rotating_light", "auth": "lock"}
     payload = {
         "topic": ntfy_topic or url.rstrip("/").split("/")[-1],
         "title": title,

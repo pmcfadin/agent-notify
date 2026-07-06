@@ -253,6 +253,7 @@ agent-notify --update                # update to latest release
 | `CODEX_NOTIFY_SAY_RATE` | system | TTS speech rate (wpm, macOS only) |
 | `CODEX_NOTIFY_WEBHOOK` | — | Webhook URL (auto-detects service) |
 | `CODEX_NOTIFY_WEBHOOK_PRESET` | auto | Webhook format: `slack`, `discord`, `telegram`, `ntfy`, `generic` |
+| `CODEX_NOTIFY_WEBHOOK_CATEGORIES` | `*` | Categories forwarded to the webhook, comma-separated (`start`, `stop`, `completion`, `approval`, `question`, `error`, `auth`) |
 | `CODEX_NOTIFY_TELEGRAM_CHAT_ID` | — | Telegram chat ID (required for telegram preset) |
 | `CODEX_NOTIFY_NTFY_TOPIC` | — | ntfy topic (can also be in URL) |
 | `CODEX_NOTIFY_EXEC_CMD` | auto-detected | Override the click-execute command |
@@ -283,8 +284,13 @@ export CODEX_NOTIFY_WEBHOOK="https://discord.com/api/webhooks/123/abc"
 export CODEX_NOTIFY_WEBHOOK="https://api.telegram.org/bot<TOKEN>/sendMessage"
 export CODEX_NOTIFY_TELEGRAM_CHAT_ID="-1001234567890"
 
-# ntfy — topic extracted from URL, priority based on event category
+# ntfy — topic extracted from URL, priority based on event category:
+# turn/session ends deliver silently (priority 2), approvals and questions
+# buzz (4), errors are urgent (5)
 export CODEX_NOTIFY_WEBHOOK="https://ntfy.sh/my-agent-notifications"
+
+# Only push actionable events to your phone; keep completions desktop-only
+export CODEX_NOTIFY_WEBHOOK_CATEGORIES="approval,question,error"
 
 # Generic JSON — works with any webhook endpoint
 export CODEX_NOTIFY_WEBHOOK="https://example.com/webhook"
